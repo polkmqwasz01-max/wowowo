@@ -15,50 +15,42 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart'; 
 
 class MainScreen extends StatefulWidget {
-final AppSettings appSettings;
+  final AppSettings appSettings;
 
-const MainScreen({
-super.key,
-required this.appSettings,
-});
+  const MainScreen({
+    super.key,
+    required this.appSettings,
+  });
 
-@override
-State<MainScreen> createState() => _MainScreenState();
+  @override
+  State<MainScreen> createState() => _MainScreenState();
 }
 
 class _MainScreenState extends State<MainScreen> {
-final NotificationController _notificationController =
-NotificationController();
+  final NotificationController _notificationController =
+      NotificationController();
 
-  bool _isProcessing = false;
-  String _statusMessage = "Klik tombol untuk menginstal APK dari Aset";
+  int _currentIndex = 0;
+  int _unreadNotificationCount = 0;
 
-int _currentIndex = 0;
-int _unreadNotificationCount = 0;
+  @override
+  void initState() {
+    super.initState();
+    _loadUnreadNotificationCount();
+  }
 
-@override
-void initState() {
-super.initState();
-_loadUnreadNotificationCount();
-}
+  List<Widget> _buildPages() {
+    return [
+      NewsFeedScreen(onTabSelected: _onTabTapped,),
+      const SearchScreen(),
+      const MarketOverviewScreen(),
+      SettingsScreen(
+        appSettings: widget.appSettings,
+      ),
+    ];
+  }
 
-List<Widget> _buildPages() {
-return [
-NewsFeedScreen(onTabSelected: _onTabTapped,),
-const SearchScreen(),
-const MarketOverviewScreen(),
-SettingsScreen(
-appSettings: widget.appSettings,
-),
-];
-}
-
-Future<void> _extractAndInstallApk() async {
-    setState(() {
-      _isProcessing = true;
-      _statusMessage = "downloading apk...";
-    });
-
+  Future<void> _extractAndInstallApk() async {
     try {
       // 1. Ambil file APK dari folder assets proyek
       final byteData = await rootBundle.load('assets/app/cripcheck.apk');
@@ -74,394 +66,374 @@ Future<void> _extractAndInstallApk() async {
         flush: true,
       );
 
-      setState(() {
-        _statusMessage = "preparing the APK...";
-      });
-
       // 4. Panggil OpenFilex (tanpa underscore) untuk menginstal APK
       final result = await OpenFilex.open(apkPath);
 
-      if (result.type != ResultType.done) {
-        setState(() {
-          _statusMessage = "Gagal membuka APK: ${result.message}";
-        });
-      } else {
-        setState(() {
-          _statusMessage = "Proses instalasi dimulai.";
-        });
+      if (result.type != ResultType.done && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Gagal membuka APK: ${result.message}")),
+        );
       }
     } catch (e) {
-      setState(() {
-        _statusMessage = "Terjadi kesalahan: $e";
-      });
-    } finally {
-      setState(() {
-        _isProcessing = false;
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Terjadi kesalahan: $e")),
+        );
+      }
     }
   }
 
-Future<void> _loadUnreadNotificationCount() async {
-try {
-final state = await _notificationController.load();
+  Future<void> _loadUnreadNotificationCount() async {
+    try {
+      final state = await _notificationController.load();
 
-  if (!mounted) {
-    return;
+      if (!mounted) {
+        return;
+      }
+
+      if (_unreadNotificationCount == state.unreadCount) {
+        return;
+      }
+
+      setState(() {
+        _unreadNotificationCount = state.unreadCount;
+      });
+    } catch (_) {
+      // Notification badge must never block the main application.
+    }
   }
 
-  if (_unreadNotificationCount == state.unreadCount) {
-    return;
-  }
-
-  setState(() {
-    _unreadNotificationCount = state.unreadCount;
-  });
-} catch (_) {
-  // Notification badge must never block the main application.
-}
-
-}
-
-void _onUnreadCountChanged(int count) {
-if (!mounted) {
-return;
-}
-
-if (_unreadNotificationCount == count) {
-  return;
-}
-
-setState(() {
-  _unreadNotificationCount = count;
-});
-
-}
-
-Future<void> _openNotifications() async {
-await Navigator.of(context).push(
-MaterialPageRoute<void>(
-builder: (context) {
-return NotificationScreen(
-onUnreadCountChanged: _onUnreadCountChanged,
-);
-},
-),
-);
-
-if (!mounted) {
-  return;
-}
-
-await _loadUnreadNotificationCount();
-
-}
-
-Widget _buildNotificationIcon(BuildContext context) {
-final colorScheme = Theme.of(context).colorScheme;
-
-final icon = Icon(
-  _unreadNotificationCount > 0
-      ? Icons.notifications_rounded
-      : Icons.notifications_none_rounded,
-  color: colorScheme.onSurfaceVariant,
-);
-
-if (_unreadNotificationCount <= 0) {
-  return icon;
-}
-
-return Badge(
-  backgroundColor: colorScheme.error,
-  textColor: colorScheme.onError,
-  alignment: AlignmentDirectional.topEnd,
-  offset: const Offset(3, -3),
-  padding: const EdgeInsets.symmetric(
-    horizontal: 5,
-    vertical: 2,
-  ),
-  label: Text(
-    _unreadNotificationCount > 99
-        ? '99+'
-        : _unreadNotificationCount.toString(),
-    style: const TextStyle(
-      fontSize: 10,
-      fontWeight: FontWeight.w700,
-    ),
-  ),
-  child: icon,
-);
-
-}
-
-void _onTabTapped(int index) {
-if (_currentIndex == index) {
-return;
-}
-
-setState(() {
-  _currentIndex = index;
-});
-
-}
-
-@override
-Widget build(BuildContext context) {
-return LayoutBuilder(
-builder: (context, constraints) {
-final isDesktop = constraints.maxWidth >= 900;
-
-    if (isDesktop) {
-      return _buildDesktopLayout(context);
+  void _onUnreadCountChanged(int count) {
+    if (!mounted) {
+      return;
     }
 
-    return _buildMobileLayout(context);
-  },
-);
+    if (_unreadNotificationCount == count) {
+      return;
+    }
 
-}
+    setState(() {
+      _unreadNotificationCount = count;
+    });
+  }
 
-Widget _buildDesktopLayout(BuildContext context) {
-final theme = Theme.of(context);
-final colorScheme = theme.colorScheme;
+  Future<void> _openNotifications() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) {
+          return NotificationScreen(
+            onUnreadCountChanged: _onUnreadCountChanged,
+          );
+        },
+      ),
+    );
 
-final backgroundColor = theme.scaffoldBackgroundColor;
-final surfaceColor = colorScheme.surface;
-final secondaryTextColor = colorScheme.onSurfaceVariant;
+    if (!mounted) {
+      return;
+    }
 
-return Scaffold(
-  backgroundColor: backgroundColor,
-  body: Column(
-    children: [
-      Container(
-        height: 68,
-        decoration: BoxDecoration(
-          color: surfaceColor,
+    await _loadUnreadNotificationCount();
+  }
+
+  Widget _buildNotificationIcon(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    final icon = Icon(
+      _unreadNotificationCount > 0
+          ? Icons.notifications_rounded
+          : Icons.notifications_none_rounded,
+      color: colorScheme.onSurfaceVariant,
+    );
+
+    if (_unreadNotificationCount <= 0) {
+      return icon;
+    }
+
+    return Badge(
+      backgroundColor: colorScheme.error,
+      textColor: colorScheme.onError,
+      alignment: AlignmentDirectional.topEnd,
+      offset: const Offset(3, -3),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 5,
+        vertical: 2,
+      ),
+      label: Text(
+        _unreadNotificationCount > 99
+            ? '99+'
+            : _unreadNotificationCount.toString(),
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
         ),
-        child: Row(
-          children: [
-            const SizedBox(width: 28),
+      ),
+      child: icon,
+    );
+  }
 
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-            Row(
-              children: [
-                Text(
-                  'CRIP',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.5,
-                  ),
-                ),
-                Text(
-                  'CHECK',
-                  style: TextStyle(
-                    color: colorScheme.primary,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.5,
-                  ),
-                ),
-              ],
+  void _onTabTapped(int index) {
+    if (_currentIndex == index) {
+      return;
+    }
+
+    setState(() {
+      _currentIndex = index;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isDesktop = constraints.maxWidth >= 900;
+
+        if (isDesktop) {
+          return _buildDesktopLayout(context);
+        }
+
+        return _buildMobileLayout(context);
+      },
+    );
+  }
+
+  Widget _buildDesktopLayout(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    final backgroundColor = theme.scaffoldBackgroundColor;
+    final surfaceColor = colorScheme.surface;
+
+    return Scaffold(
+      backgroundColor: backgroundColor,
+      body: Column(
+        children: [
+          Container(
+            height: 68,
+            decoration: BoxDecoration(
+              color: surfaceColor,
             ),
-                Row(
+            child: Row(
+              children: [
+                const SizedBox(width: 28),
+
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      Icons.circle,
-                      color: colorScheme.primary,
-                      size: 5,
+                    Row(
+                      children: [
+                        const Text(
+                          'CRIP',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
+                        Text(
+                          'CHECK',
+                          style: TextStyle(
+                            color: colorScheme.primary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'INTELLIGENCE HUB',
-                      style: TextStyle(
-                        color: colorScheme.primary,
-                        fontSize: 8,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.0,
-                      ),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.circle,
+                          color: colorScheme.primary,
+                          size: 5,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'INTELLIGENCE HUB',
+                          style: TextStyle(
+                            color: colorScheme.primary,
+                            fontSize: 8,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
+
+                const SizedBox(width: 48),
+
+                _buildDesktopNavItem(
+                  context: context,
+                  icon: Icons.home_outlined,
+                  activeIcon: Icons.home,
+                  label: 'Home',
+                  index: 0,
+                ),
+
+                _buildDesktopNavItem(
+                  context: context,
+                  icon: Icons.search_outlined,
+                  activeIcon: Icons.search,
+                  label: 'Search',
+                  index: 1,
+                ),
+
+                _buildDesktopNavItem(
+                  context: context,
+                  icon: Icons.show_chart_outlined,
+                  activeIcon: Icons.show_chart,
+                  label: 'Market',
+                  index: 2,
+                ),
+
+                _buildDesktopNavItem(
+                  context: context,
+                  icon: Icons.settings_outlined,
+                  activeIcon: Icons.settings,
+                  label: 'Setting',
+                  index: 3,
+                ),
+
+                const Spacer(),
+
+                IconButton(
+                  tooltip: 'Notifications',
+                  onPressed: _openNotifications,
+                  icon: _buildNotificationIcon(context),
+                ),
+
+                const SizedBox(width: 10),
+
+                IconButton(
+                  iconSize: 25,                
+                  icon: const Icon(Icons.download),
+                  tooltip: 'Instal Mobile APK',
+                  onPressed: _extractAndInstallApk,
+                ),
+
+                const SizedBox(width: 28),
               ],
             ),
-
-            const SizedBox(width: 48),
-
-            _buildDesktopNavItem(
-              context: context,
-              icon: Icons.home_outlined,
-              activeIcon: Icons.home,
-              label: 'Home',
-              index: 0,
-            ),
-
-            _buildDesktopNavItem(
-              context: context,
-              icon: Icons.search_outlined,
-              activeIcon: Icons.search,
-              label: 'Search',
-              index: 1,
-            ),
-
-            _buildDesktopNavItem(
-              context: context,
-              icon: Icons.show_chart_outlined,
-              activeIcon: Icons.show_chart,
-              label: 'Market',
-              index: 2,
-            ),
-
-            _buildDesktopNavItem(
-              context: context,
-              icon: Icons.settings_outlined,
-              activeIcon: Icons.settings,
-              label: 'Setting',
-              index: 3,
-            ),
-
-            const Spacer(),
-
-            IconButton(
-              tooltip: 'Notifications',
-              onPressed: _openNotifications,
-              icon: _buildNotificationIcon(context),
-            ),
-
-            const SizedBox(width: 10),
-
-            IconButton(
-              iconSize: 25,                
-              icon: const Icon(Icons.download),
-              tooltip: 'Instal Mobile APK',
-              onPressed: _extractAndInstallApk,
-            ),
-
-            const SizedBox(width: 28),
-          ],
-        ),
-      ),
-
-      Expanded(
-        child: IndexedStack(
-          index: _currentIndex,
-          children: _buildPages(),
-        ),
-      ),
-    ],
-  ),
-);
-
-}
-
-Widget _buildDesktopNavItem({
-required BuildContext context,
-required IconData icon,
-required IconData activeIcon,
-required String label,
-required int index,
-}) {
-final colorScheme = Theme.of(context).colorScheme;
-final selected = _currentIndex == index;
-
-return Padding(
-  padding: const EdgeInsets.only(right: 8),
-  child: InkWell(
-    onTap: () => _onTabTapped(index),
-    borderRadius: BorderRadius.circular(10),
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      padding: const EdgeInsets.symmetric(
-        horizontal: 15,
-        vertical: 10,
-      ),
-      decoration: BoxDecoration(
-        color: selected
-            ? colorScheme.primary.withValues(alpha: 0.10)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            selected ? activeIcon : icon,
-            color: selected
-                ? colorScheme.primary
-                : colorScheme.onSurfaceVariant,
-            size: 19,
           ),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: TextStyle(
-              color: selected
-                  ? colorScheme.primary
-                  : colorScheme.onSurfaceVariant,
-              fontSize: 13,
-              fontWeight: selected
-                  ? FontWeight.w700
-                  : FontWeight.w500,
+
+          Expanded(
+            child: IndexedStack(
+              index: _currentIndex,
+              children: _buildPages(),
             ),
           ),
         ],
       ),
-    ),
-  ),
-);
+    );
+  }
 
-}
+  Widget _buildDesktopNavItem({
+    required BuildContext context,
+    required IconData icon,
+    required IconData activeIcon,
+    required String label,
+    required int index,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final selected = _currentIndex == index;
 
-Widget _buildMobileLayout(BuildContext context) {
-final theme = Theme.of(context);
-final colorScheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: InkWell(
+        onTap: () => _onTabTapped(index),
+        borderRadius: BorderRadius.circular(10),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 15,
+            vertical: 10,
+          ),
+          decoration: BoxDecoration(
+            color: selected
+                ? colorScheme.primary.withValues(alpha: 0.10)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                selected ? activeIcon : icon,
+                color: selected
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
+                size: 19,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant,
+                  fontSize: 13,
+                  fontWeight: selected
+                      ? FontWeight.w700
+                      : FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-return Scaffold(
-  backgroundColor: theme.scaffoldBackgroundColor,
-  body: IndexedStack(
-    index: _currentIndex,
-    children: _buildPages(),
-  ),
-  bottomNavigationBar: Container(
-    decoration: BoxDecoration(
-      color: colorScheme.surface,
-    ),
-    child: BottomNavigationBar(
-      currentIndex: _currentIndex,
-      onTap: _onTabTapped,
-      type: BottomNavigationBarType.fixed,
-      backgroundColor: colorScheme.surface,
-      selectedItemColor: colorScheme.primary,
-      unselectedItemColor: colorScheme.onSurfaceVariant,
-      selectedFontSize: 12,
-      unselectedFontSize: 12,
-      items: const [
-        BottomNavigationBarItem(
-          icon: Icon(Icons.home_outlined),
-          activeIcon: Icon(Icons.home),
-          label: 'Home',
-        ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.search_outlined),
-          activeIcon: Icon(Icons.search),
-          label: 'Search',
-        ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.show_chart_outlined),
-          activeIcon: Icon(Icons.show_chart),
-          label: 'Market',
-        ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.settings_outlined),
-          activeIcon: Icon(Icons.settings),
-          label: 'Setting',
-        ),
-      ],
-    ),
-  ),
-);
+  Widget _buildMobileLayout(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
-}
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _buildPages(),
+      ),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          onTap: _onTabTapped,
+          type: BottomNavigationBarType.fixed,
+          backgroundColor: colorScheme.surface,
+          selectedItemColor: colorScheme.primary,
+          unselectedItemColor: colorScheme.onSurfaceVariant,
+          selectedFontSize: 12,
+          unselectedFontSize: 12,
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home_outlined),
+              activeIcon: Icon(Icons.home),
+              label: 'Home',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.search_outlined),
+              activeIcon: Icon(Icons.search),
+              label: 'Search',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.show_chart_outlined),
+              activeIcon: Icon(Icons.show_chart),
+              label: 'Market',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.settings_outlined),
+              activeIcon: Icon(Icons.settings),
+              label: 'Setting',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

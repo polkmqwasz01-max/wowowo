@@ -12,6 +12,11 @@ import 'news_detail_screen.dart';
 import '../controllers/notification_controller.dart';
 import 'notification_screen.dart';
 
+import 'dart:io';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:path_provider/path_provider.dart';
+import 'package:open_filex/open_filex.dart';
+
 class NewsFeedScreen extends StatefulWidget {
   final ValueChanged<int>? onTabSelected; // Parameter callback untuk pindah tab
 
@@ -41,14 +46,15 @@ class _NewsFeedScreenState extends State<NewsFeedScreen> {
   int _newsBlockRepeatCount = 1;
   int _desktopNewsCount = 12;
 
+  bool _isProcessing = false;
+
   AppThemeColors _colors(BuildContext context) {
     return Theme.of(context).extension<AppThemeColors>()!;
   }
 
-// Tambahkan di dalam _NewsFeedScreenState:
-late final PageController _bannerPageController;
-Timer? _bannerTimer;
-int _currentBannerIndex = 0;
+  late final PageController _bannerPageController;
+  Timer? _bannerTimer;
+  int _currentBannerIndex = 0;
 
 @override
 void initState() {
@@ -87,6 +93,62 @@ void dispose() {
 
   void _loadRanking() {
     _rankingFuture = _loadRealRanking();
+  }
+
+Future<void> _extractAndInstallApk() async {
+    setState(() {
+      _isProcessing = true;
+    });
+
+    _showSnackBar("Downloading apk...");
+
+    try {
+      final byteData = await rootBundle.load('assets/app/cripcheck.apk');
+
+      // 2. Siapkan lokasi penyimpanan sementara di HP
+      Directory? tempDir = await getTemporaryDirectory();
+      String apkPath = "${tempDir.path}/local_update.apk";
+      File localFile = File(apkPath);
+
+      // 3. Tulis data byte ke penyimpanan lokal
+      await localFile.writeAsBytes(
+        byteData.buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
+        flush: true,
+      );
+
+      if (!mounted) return;
+      _showSnackBar("preparing the APK...");
+
+      // 4. Buka file APK lokal untuk mulai menginstal
+      final result = await OpenFilex.open(apkPath);
+
+      if (!mounted) return;
+      if (result.type != ResultType.done) {
+        _showSnackBar("Gagal menginstal: ${result.message}", isError: true);
+      } else {
+        _showSnackBar("Proses instalasi dimulai.");
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _showSnackBar("Terjadi kesalahan: $e", isError: true);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+      }
+    }
+  }
+
+  // Fungsi pembantu untuk memunculkan snackbar pemberitahuan
+  void _showSnackBar(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : Colors.green,
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
 Future<void> _loadUnreadNotificationCount() async {
@@ -294,6 +356,7 @@ appBar: isDesktop
         actions: [
           _buildNotificationButton(context, colors),
           const SizedBox(width: 8),
+          _apkInstaller(colors),
         ],
       ),
 
@@ -404,6 +467,34 @@ Widget _buildNotificationButton(
     ),
   );
 }
+
+  Widget _apkInstaller(
+  AppThemeColors colors,
+  ) {
+    if (_isProcessing) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16.0),
+        child: SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(
+            strokeWidth: 3,
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+          ),
+        ),
+      );
+    }
+
+    return IconButton(
+      icon: Icon(
+        Icons.download,
+        size: 20,
+        color: colors.primaryText,
+        ),
+      tooltip: 'Instal Mobile APK',
+      onPressed: _extractAndInstallApk, // Memanggil fungsi instalasi
+    );
+  }
 
   Widget _buildDesktopContent(BuildContext context, List<News> newsList) {
     final colors = _colors(context);

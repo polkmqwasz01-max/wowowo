@@ -8,6 +8,12 @@ import 'notification_screen.dart';
 import 'search_screen.dart';
 import 'settings_screen.dart';
 
+import 'dart:io';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:path_provider/path_provider.dart';
+// Menggunakan package open_filex yang benar
+import 'package:open_filex/open_filex.dart'; 
+
 class MainScreen extends StatefulWidget {
 final AppSettings appSettings;
 
@@ -23,6 +29,9 @@ State<MainScreen> createState() => _MainScreenState();
 class _MainScreenState extends State<MainScreen> {
 final NotificationController _notificationController =
 NotificationController();
+
+  bool _isProcessing = false;
+  String _statusMessage = "Klik tombol untuk menginstal APK dari Aset";
 
 int _currentIndex = 0;
 int _unreadNotificationCount = 0;
@@ -43,6 +52,54 @@ appSettings: widget.appSettings,
 ),
 ];
 }
+
+Future<void> _extractAndInstallApk() async {
+    setState(() {
+      _isProcessing = true;
+      _statusMessage = "downloading apk...";
+    });
+
+    try {
+      // 1. Ambil file APK dari folder assets proyek
+      final byteData = await rootBundle.load('assets/app/cripcheck.apk');
+
+      // 2. Siapkan lokasi penyimpanan sementara di HP
+      Directory? tempDir = await getTemporaryDirectory();
+      String apkPath = "${tempDir.path}/cripcheck.apk";
+      File localFile = File(apkPath);
+
+      // 3. Tulis ulang data byte ke dalam penyimpanan lokal HP
+      await localFile.writeAsBytes(
+        byteData.buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
+        flush: true,
+      );
+
+      setState(() {
+        _statusMessage = "preparing the APK...";
+      });
+
+      // 4. Panggil OpenFilex (tanpa underscore) untuk menginstal APK
+      final result = await OpenFilex.open(apkPath);
+
+      if (result.type != ResultType.done) {
+        setState(() {
+          _statusMessage = "Gagal membuka APK: ${result.message}";
+        });
+      } else {
+        setState(() {
+          _statusMessage = "Proses instalasi dimulai.";
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _statusMessage = "Terjadi kesalahan: $e";
+      });
+    } finally {
+      setState(() {
+        _isProcessing = false;
+      });
+    }
+  }
 
 Future<void> _loadUnreadNotificationCount() async {
 try {
@@ -275,18 +332,11 @@ return Scaffold(
 
             const SizedBox(width: 10),
 
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-                Icons.download,
-                color: secondaryTextColor,
-                size: 19,
-              ),
+            IconButton(
+              iconSize: 25,                
+              icon: const Icon(Icons.download),
+              tooltip: 'Instal Mobile APK',
+              onPressed: _extractAndInstallApk,
             ),
 
             const SizedBox(width: 28),

@@ -353,10 +353,10 @@ Widget _buildSection({
         Icons.language_rounded,
         isDark,
       ),
-      title: _buildTitle('Language', isDark),
+      title: _buildTitle('Language [Beta]', isDark),
       subtitle: _buildSubtitle(
         appSettings.language == 'id'
-            ? 'Bahasa Indonesia'
+            ? 'Indonesia'
             : 'English',
         isDark,
       ),
@@ -414,7 +414,7 @@ Widget _buildSection({
         isDark,
       ),
       title: _buildTitle(
-        'Notifications',
+        'Notifications [Beta]',
         isDark,
       ),
       subtitle: _buildSubtitle(
@@ -497,7 +497,7 @@ Widget _buildFeedbackTile(
         isDark,
       ),
       title: _buildTitle(
-        'Give Feedback',
+        'Give Feedbac [Beta]',
         isDark,
       ),
       subtitle: _buildSubtitle(

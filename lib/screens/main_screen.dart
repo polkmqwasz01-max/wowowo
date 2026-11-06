@@ -8,11 +8,9 @@ import 'notification_screen.dart';
 import 'search_screen.dart';
 import 'settings_screen.dart';
 
-import 'dart:io';
 import 'package:flutter/services.dart' show rootBundle;
-import 'package:path_provider/path_provider.dart';
-// Menggunakan package open_filex yang benar
-import 'package:open_filex/open_filex.dart'; 
+import 'dart:typed_data';
+import 'package:file_saver/file_saver.dart';
 
 class MainScreen extends StatefulWidget {
   final AppSettings appSettings;
@@ -33,6 +31,8 @@ class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
   int _unreadNotificationCount = 0;
 
+  bool _isProcessing = false;
+
   @override
   void initState() {
     super.initState();
@@ -50,38 +50,60 @@ class _MainScreenState extends State<MainScreen> {
     ];
   }
 
-  Future<void> _extractAndInstallApk() async {
-    try {
-      // 1. Ambil file APK dari folder assets proyek
-      final byteData = await rootBundle.load('assets/app/cripcheck.apk');
+Future<void> _extractAndInstallApk() async {
+  try {
+    // 1. Tampilkan indikator proses jika ada
+    setState(() {
+      _isProcessing = true;
+    });
 
-      // 2. Siapkan lokasi penyimpanan sementara di HP
-      Directory? tempDir = await getTemporaryDirectory();
-      String apkPath = "${tempDir.path}/cripcheck.apk";
-      File localFile = File(apkPath);
+    // 2. Ambil file APK dari assets proyek
+    final ByteData byteData = await rootBundle.load('assets/app/cripcheck.apk');
+    Uint8List bytes = byteData.buffer.asUint8List(
+      byteData.offsetInBytes,
+      byteData.lengthInBytes,
+    );
 
-      // 3. Tulis ulang data byte ke dalam penyimpanan lokal HP
-      await localFile.writeAsBytes(
-        byteData.buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
-        flush: true,
+    // 3. Simpan/unduh file menggunakan file_saver (berfungsi di Android, Desktop, Web)
+    String path = await FileSaver.instance.saveFile(
+      name: 'cripcheck.apk',
+      bytes: bytes,
+      mimeType: MimeType.other,
+    );
+
+    if (!mounted) return;
+
+    if (path.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Download APK Success!!"),
+          backgroundColor: Colors.green,
+        ),
       );
-
-      // 4. Panggil OpenFilex (tanpa underscore) untuk menginstal APK
-      final result = await OpenFilex.open(apkPath);
-
-      if (result.type != ResultType.done && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Gagal membuka APK: ${result.message}")),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Terjadi kesalahan: $e")),
-        );
-      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Download Canceled."),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    }
+  } catch (e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("exception: $e"),
+        backgroundColor: Colors.red,
+      ),
+    );
+  } finally {
+    if (mounted) {
+      setState(() {
+        _isProcessing = false;
+      });
     }
   }
+}
 
   Future<void> _loadUnreadNotificationCount() async {
     try {
@@ -307,7 +329,16 @@ class _MainScreenState extends State<MainScreen> {
 
                 const SizedBox(width: 10),
 
-                IconButton(
+              _isProcessing
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 10),
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  ),
+                )
+              : IconButton(
                   iconSize: 25,                
                   icon: const Icon(Icons.download),
                   tooltip: 'Instal Mobile APK',
